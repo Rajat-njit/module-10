@@ -35,26 +35,24 @@ jobs:
       CI: true
 
     steps:
-      - name: Checkout Repository
+      - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Tests with Coverage
+      - name: 🧪 Run Pytest with Coverage
         run: |
           pytest --cov=app --cov-report=xml --cov-report=term-missing
-          coverage xml
-        continue-on-error: false
 
-      - name: Upload Coverage to GitHub Summary
+      - name: 📊 Upload Coverage Summary
         if: always()
         run: |
           echo "### ✅ Pytest Coverage Report" >> $GITHUB_STEP_SUMMARY
@@ -69,26 +67,26 @@ jobs:
     needs: test
 
     steps:
-      - name: Checkout Repository
+      - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: 🔐 Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build Docker Image
+      - name: 🏗️ Build Docker Image
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest .
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/module-10:latest .
 
-      - name: Run Trivy Security Scan
+      - name: 🔍 Trivy Security Scan
         uses: aquasecurity/trivy-action@0.24.0
         with:
-          image-ref: ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/module-10:latest
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
@@ -103,23 +101,24 @@ jobs:
     needs: build
 
     steps:
-      - name: Checkout Repository
+      - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
+      - name: 🔐 Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push Image
+      - name: 🚀 Push Docker Image
         run: |
-          docker tag ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest \
-                     ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:${{ github.run_number }}
-          docker push ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:${{ github.run_number }}
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/module-10:latest \
+                     ${{ secrets.DOCKERHUB_USERNAME }}/module-10:${{ github.run_number }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/module-10:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/module-10:${{ github.run_number }}
 
-      - name: Report Deployment Summary
+      - name: 📋 Deployment Summary
         run: |
           echo "### 🐳 Docker Image Successfully Built & Pushed" >> $GITHUB_STEP_SUMMARY
-          echo "Image: ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ secrets.DOCKERHUB_USERNAME }}/module-10:latest" >> $GITHUB_STEP_SUMMARY
+          echo "Run Number Tag: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
