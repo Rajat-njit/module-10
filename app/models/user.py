@@ -32,8 +32,11 @@ class User(Base):
     # -------------------------------------------------------------------
     @staticmethod
     def hash_password(password: str) -> str:
-        """Return a bcrypt hash for the given plain password."""
+        """Return a bcrypt hash for the given plain password (max 72 bytes)."""
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("Password cannot exceed 72 bytes for bcrypt hashing.")
         return pwd_context.hash(password)
+
 
     def verify_password(self, plain_password: str) -> bool:
         """Return True if the plain password matches stored hash."""
