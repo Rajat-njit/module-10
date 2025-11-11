@@ -33,18 +33,19 @@ class User(Base):
     @staticmethod
     def hash_password(password: str) -> str:
         """
-        Securely hash the user's password.
-        bcrypt only supports up to 72 bytes, so longer inputs are truncated safely.
+        Securely hash a password. bcrypt supports up to 72 UTF-8 bytes.
+        This ensures no ValueError is raised on long or non-ASCII inputs.
         """
-        if len(password.encode("utf-8")) > 72:
-            password = password[:72]  # truncate safely for bcrypt
+        encoded = password.encode("utf-8", errors="ignore")[:72]
+        password = encoded.decode("utf-8", errors="ignore")
         return pwd_context.hash(password)
 
-
     def verify_password(self, plain_password: str) -> bool:
-        """Return True if the plain password matches stored hash."""
+        """Verify a plaintext password against the stored hash."""
+        encoded = plain_password.encode("utf-8", errors="ignore")[:72]
+        plain_password = encoded.decode("utf-8", errors="ignore")
         return pwd_context.verify(plain_password, self.password_hash)
-
+        
     # -------------------------------------------------------------------
     # Registration helper
     # -------------------------------------------------------------------
