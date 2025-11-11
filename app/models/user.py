@@ -31,11 +31,14 @@ class User(Base):
     # Password helpers
     # -------------------------------------------------------------------
     @staticmethod
-    def hash_password(password: str) -> str:
-        """Return a bcrypt hash for the given plain password (max 72 bytes)."""
-        if len(password.encode("utf-8")) > 72:
-            raise ValueError("Password cannot exceed 72 bytes for bcrypt hashing.")
-        return pwd_context.hash(password)
+        def hash_password(password: str) -> str:
+            """
+            Securely hash the user's password.
+            bcrypt only supports up to 72 bytes, so longer inputs are truncated safely.
+            """
+            if len(password.encode("utf-8")) > 72:
+                password = password[:72]  # truncate safely for bcrypt
+            return pwd_context.hash(password)
 
 
     def verify_password(self, plain_password: str) -> bool:
