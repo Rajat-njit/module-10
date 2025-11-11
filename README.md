@@ -1,5 +1,3 @@
-
-
 ---
 
 # 🧠 Module 10 – Secure User Model with FastAPI, SQLAlchemy, Pydantic & CI/CD
@@ -227,34 +225,88 @@ assert User.verify_password("MySecurePassword123", hashed)
 
 ---
 
-## 🧪 Unit and Integration Testing
+## 🧪 Testing ( Unit + Integration )
 
-Testing ensures both **code reliability** and **database integrity**.
+### Unit Tests – `tests/unit`
 
-### ✅ Unit Tests (`tests/unit/`)
-
-Example: `test_models.py`
+#### 🔸 Password Hashing
 
 ```python
 def test_password_hash_and_verify():
     password = "Secure123"
     hashed = User.hash_password(password)
+    assert hashed != password
     assert User.verify_password(password, hashed)
 ```
 
-### ✅ Integration Tests (`tests/integration/`)
+#### 🔸 Validation with Pydantic
 
-These use a real **PostgreSQL** container for database-backed validation.
+```python
+from pydantic import ValidationError
+from app.schemas.base import UserCreate
 
-Example: `test_user_ops.py`
+def test_invalid_email_schema():
+    with pytest.raises(ValidationError):
+        UserCreate(username="abc", email="notanemail", password="StrongPass1")
+```
+
+#### 🔸 User Length & Empty Fields
+
+```python
+import pytest
+def test_username_too_short():
+    with pytest.raises(ValidationError):
+        UserCreate(username="a", email="a@b.com", password="Valid1234")
+```
+
+### Using **Faker** for Synthetic Users
+
+The `faker` library creates realistic dummy users for testing bulk operations:
+
+```python
+from faker import Faker
+fake = Faker()
+
+def test_bulk_user_creation(db_session):
+    for _ in range(5):
+        u = create_user(
+            db_session,
+            username=fake.user_name(),
+            email=fake.email(),
+            password="StrongPass1"
+        )
+        assert "@" in u.email
+```
+
+Faker ensures data variety without hard-coded values.
+
+---
+
+### Integration Tests – `tests/integration`
+
+Use a real PostgreSQL database (simulated in CI/CD or via Docker Compose).
 
 ```python
 def test_create_and_retrieve_user(db_session):
-    user = create_user(db_session, username="raj", email="raj@example.com", password="Secure123")
-    retrieved = get_user_by_username(db_session, "raj")
-    assert retrieved.email == "raj@example.com"
+    u = create_user(db_session, "raj", "raj@example.com", "Secure123")
+    r = get_user_by_username(db_session, "raj")
+    assert r.email == "raj@example.com"
+
+def test_user_not_found_returns_none(db_session):
+    assert get_user_by_username(db_session, "ghost_user") is None
 ```
 
+Also test **unique constraint** errors:
+
+```python
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+def test_duplicate_username(db_session):
+    create_user(db_session, "sam", "sam@mail.com", "Pass1234")
+    with pytest.raises(IntegrityError):
+        create_user(db_session, "sam", "sam2@mail.com", "Pass1234")
+```
 ---
 
 ## ⚙️ Configure CI/CD Pipeline
@@ -354,71 +406,127 @@ docker pull rajatpednekar/module-10:latest
 
 ---
 
-## 🧠 Special Mention — Key Learnings
+## 🧠 Special Mentions – Security & Automation
 
-### 🔹 Secure User Model
+### 🔒 Secure User Model
 
-* SQLAlchemy model enforces uniqueness and strong password hashing.
-* No sensitive data (like raw passwords) is ever logged or stored.
+* SQLAlchemy model with unique constraints & hashed passwords
+* Automatic timestamping of user creation
+* Pydantic schemas restrict exposure of sensitive fields
 
-### 🔹 Pydantic Validation
+### ⚙️ Testing & CI/CD
 
-* Ensures correct email format and password constraints.
-* Clean separation between input (`UserCreate`) and output (`UserRead`).
-
-### 🔹 Testing & CI/CD
-
-* Local tests mirror GitHub Actions workflow.
-* Every commit triggers a pipeline → test → scan → build → deploy.
+* Unit and integration tests achieve > 90% coverage
+* GitHub Actions pipeline runs tests, builds Docker image, scans with Trivy, and pushes to Docker Hub
 
 ---
 
-## 🧪 How to Run Tests Locally
+## 🧪 More User Validation Tests
 
-To replicate CI/CD tests locally:
+### Invalid Email Format
 
-1. **Start PostgreSQL container**
+```python
+def test_reject_invalid_email():
+    payload = {"username": "raj", "email": "invalid-email", "password": "Secure123"}
+    response = client.post("/users/", json=payload)
+    assert response.status_code == 422
+```
 
-   ```bash
-   docker run --name postgres-test \
-     -e POSTGRES_USER=postgres \
-     -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_DB=test_db \
-     -p 5432:5432 \
-     -d postgres:16
-   ```
+### Duplicate Email Detection
 
-2. **Activate environment**
+```python
+def test_duplicate_email_not_allowed(db_session):
+    create_user(db_session, "alpha", "alpha@mail.com", "Strong123")
+    with pytest.raises(Exception):
+        create_user(db_session, "beta", "alpha@mail.com", "Strong123")
+```
 
-   ```bash
-   source venv/bin/activate
-   ```
+### Password Too Short
 
-3. **Run all tests**
+```python
+def test_short_password_fails_validation():
+    with pytest.raises(ValidationError):
+        UserCreate(username="raj", email="raj@mail.com", password="123")
+```
 
-   ```bash
-   pytest -v -s --cov=app --cov-report=term-missing
-   ```
+These cases ensure validation covers realistic user input scenarios and prevent data integrity issues.
 
-4. **Run individual files**
+---
 
-   ```bash
-   pytest tests/unit/test_models.py -v
-   pytest tests/integration/test_user_ops.py -v
-   ```
+## 🧪 How to Interpret Test Results
 
-5. **Check coverage**
-
-   ```bash
-   coverage report
-   ```
-
-Expected output:
+After running pytest:
 
 ```
-=================== 14 passed in 0.83s ===================
----------- coverage: 92% ----------
+=================== 14 passed in 0.82s ===================
+---------- coverage: platform darwin, python 3.11 ----------
+Name                         Stmts   Miss  Cover
+------------------------------------------------
+app/models/user.py              40      2    95%
+app/schemas/base.py             19      0   100%
+TOTAL                          135      6    92%
 ```
+
+✅ All green → pipeline passes → Docker Hub deploy triggered.
+
+---
+
+## 🧪 How to Run Tests Locally (in Depth)
+
+### 🧩 Option 1 – Local PostgreSQL Container
+
+1️⃣ Start Postgres:
+
+```bash
+docker run --name postgres-test \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=test_db \
+  -p 5432:5432 \
+  -d postgres:16
+```
+
+2️⃣ Activate env + run tests:
+
+```bash
+source venv/bin/activate
+pytest -v -s --cov=app --cov-report=term-missing
+```
+
+3️⃣ Stop when done:
+
+```bash
+docker stop postgres-test
+docker rm postgres-test
+```
+
+---
+
+### 🧩 Option 2 – Run Tests via Docker Compose (Recommended)
+
+This approach spins up both Postgres and FastAPI in one command and lets you test exactly as the CI/CD pipeline does.
+
+```bash
+docker compose up --build --detach
+docker exec -it fastapi_app pytest -v --cov=app
+```
+
+* `fastapi_app` = container name of your API service
+* The tests run inside the Docker environment with the same settings as production.
+
+Then generate coverage:
+
+```bash
+docker exec -it fastapi_app coverage report
+```
+
+To shut down:
+
+```bash
+docker compose down -v
+```
+
+✅ **Benefit:** Isolated environment ensures consistent results between local and GitHub Actions.
 
 ---
 
@@ -460,4 +568,3 @@ It reflects a professional-grade architecture that can be easily extended into p
 
 ---
 
-Would you like me to format this version with **GitHub-style collapsible sections** (`<details>` tags) and icons (🚀 🧩 🔐) to make your submission visually outstanding on GitHub?
