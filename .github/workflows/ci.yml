@@ -1,0 +1,125 @@
+name: CI/CD Pipeline – Secure User Model
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  # -------------------------------
+  # 1️⃣ Run Tests (Unit + Integration)
+  # -------------------------------
+  test:
+    name: Run Unit & Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/test_db
+      PYTHONPATH: .
+      CI: true
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests with Coverage
+        run: |
+          pytest --cov=app --cov-report=xml --cov-report=term-missing
+          coverage xml
+        continue-on-error: false
+
+      - name: Upload Coverage to GitHub Summary
+        if: always()
+        run: |
+          echo "### ✅ Pytest Coverage Report" >> $GITHUB_STEP_SUMMARY
+          coverage report >> $GITHUB_STEP_SUMMARY
+
+  # -------------------------------
+  # 2️⃣ Build Docker Image
+  # -------------------------------
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest .
+
+      - name: Run Trivy Security Scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+  # -------------------------------
+  # 3️⃣ Push to Docker Hub
+  # -------------------------------
+  push:
+    name: Push Docker Image to Docker Hub
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Image
+        run: |
+          docker tag ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest \
+                     ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:${{ github.run_number }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:${{ github.run_number }}
+
+      - name: Report Deployment Summary
+        run: |
+          echo "### 🐳 Docker Image Successfully Built & Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/module10-fastapi-app:latest" >> $GITHUB_STEP_SUMMARY
